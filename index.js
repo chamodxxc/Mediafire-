@@ -17,24 +17,60 @@ export default {
     }
 
     if (!mediafire) {
-      return new Response(JSON.stringify({ error: "Missing ?url parameter" }), { headers });
+      return new Response(
+        JSON.stringify({ status: false, error: "Missing ?url parameter" }),
+        { headers }
+      );
     }
 
     if (!mediafire.includes("mediafire.com")) {
-      return new Response(JSON.stringify({ error: "Invalid Mediafire URL" }), { headers });
+      return new Response(
+        JSON.stringify({ status: false, error: "Invalid Mediafire URL" }),
+        { headers }
+      );
     }
 
     try {
-      const res = await fetch(`https://api.nekolabs.web.id/px?url=${encodeURIComponent(mediafire)}`);
-      const data = await res.json();
-      const $ = cheerio.load(data.result.content);
+      const res = await fetch(mediafire, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
+          "Referer": "https://www.mediafire.com/",
+        },
+      });
 
-      const filename = $(".dl-btn-label").attr("title") || $("div.intro div.filename").text().trim() || null;
-      const filesize = $("ul.details li:nth-child(1) span").text().trim();
-      const uploaded = $("ul.details li:nth-child(2) span").text().trim();
-      const download = $("a#downloadButton").attr("href");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
 
-      if (!download) throw new Error("File not found");
+      const html = await res.text();
+      const $ = cheerio.load(html);
+
+      let download =
+        $("#downloadButton").attr("href") ||
+        $("a.download_link").attr("href") ||
+        $("a:contains('Download')").attr("href") ||
+        null;
+
+      if (!download) {
+        throw new Error(
+          "Download link not found. MediaFire layout may have changed."
+        );
+      }
+
+      const filename =
+        $(".filename").text().trim() ||
+        $(".dl-btn-label").text().trim() ||
+        null;
+
+      const filesize =
+        $(".dl-btn-label")
+          .text()
+          .match(/\(([^)]+)\)/)?.[1] || "Unknown";
+
+      const uploaded =
+        $(".details li:contains('Uploaded') span").text().trim() ||
+        "Unknown";
 
       return new Response(
         JSON.stringify(
@@ -55,7 +91,11 @@ export default {
       );
     } catch (err) {
       return new Response(
-        JSON.stringify({ creator: "Chamod Nimsara", status: false, error: err.message }),
+        JSON.stringify({
+          creator: "Chamod Nimsara",
+          status: false,
+          error: err.message,
+        }),
         { headers }
       );
     }
